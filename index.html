@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人机校验</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,sans-serif}
+html,body{width:100%;height:100%;overflow:hidden;color:#fff}
+#tornadoCanvas{
+    position:fixed;
+    inset:0;
+    z-index:-1;
+    background:#050508;
+}
+.wrap{
+    width:100%;
+    height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+}
+.card{
+    background:rgba(12,15,22,0.85);
+    border:1px solid #334155;
+    border-radius:16px;
+    padding:32px;
+    width:360px;
+    backdrop-filter: blur(8px);
+}
+.title{font-size:22px;margin-bottom:12px}
+.ip-info{
+    color:#7ec8ff;
+    font-size:18px;
+    margin:8px 0 20px;
+}
+.desc{color:#b0c4de;margin-bottom:16px;font-size:14px;line-height:1.6}
+#ipInput{
+    width:100%;
+    padding:12px 14px;
+    border-radius:8px;
+    border:1px solid #475569;
+    background:#0f172a;
+    color:#fff;
+    font-size:16px;
+    outline:none;
+}
+#ipInput:focus{border-color:#3b82f6}
+.btns{margin-top:18px;display:flex;gap:12px}
+button{
+    flex:1;
+    padding:12px;
+    border-radius:8px;
+    border:none;
+    font-size:16px;
+    cursor:pointer;
+    transition:0.2s
+}
+#submitBtn{background:#3b82f6;color:#fff}
+#resetBtn{background:#1e293b;color:#fff}
+.msg{margin-top:16px;font-size:15px;min-height:20px}
+.ok{color:#4ade80}
+.err{color:#f87171}
+</style>
+</head>
+<body>
+<canvas id="tornadoCanvas"></canvas>
+<div class="wrap">
+    <div class="card">
+        <div class="title">人机校验</div>
+        <div class="desc">请输入你的公网IP地址</div>
+        <div class="ip-info">你的IP：<span id="realIp">加载中...</span></div>
+        <input id="ipInput" placeholder="在此输入IP" inputmode="latin">
+        <div class="btns">
+            <button id="submitBtn">提交验证</button>
+            <button id="resetBtn">重置</button>
+        </div>
+        <div class="msg" id="msg"></div>
+    </div>
+</div>
+
+<script>
+const targetUrl = "https://www.pcplayergame.gn0.cc";
+let realUserIp = "";
+let firstKeyTs = null;
+const ipEl = document.getElementById('realIp');
+const inputEl = document.getElementById('ipInput');
+const msgEl = document.getElementById('msg');
+const wrap = document.querySelector('.wrap');
+
+// 获取今天日期字符串 YYYY-MM-DD
+function getTodayStr(){
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+}
+
+// 读取缓存
+function getCache(){
+    const raw = localStorage.getItem('verifyCache');
+    if(!raw) return null;
+    try{
+        return JSON.parse(raw);
+    }catch(e){
+        return null;
+    }
+}
+
+// 保存缓存
+function saveCache(ip){
+    localStorage.setItem('verifyCache', JSON.stringify({
+        ip: ip,
+        date: getTodayStr()
+    }));
+}
+
+// 检查是否今天已经验证过
+function checkSkip(ip){
+    const cache = getCache();
+    if(cache && cache.ip === ip && cache.date === getTodayStr()){
+        // 直接跳过验证
+        location.href = targetUrl;
+        return true;
+    }
+    return false;
+}
+
+// 获取公网IP
+fetch("https://api.ipify.org?format=json")
+.then(r=>r.json())
+.then(d=>{
+    realUserIp = d.ip;
+    ipEl.textContent = realUserIp;
+    // 校验是否可以跳过
+    checkSkip(realUserIp);
+})
+.catch(()=>{
+    ipEl.textContent = "获取失败，请手动查看IP";
+});
+
+// 禁止粘贴
+inputEl.addEventListener('paste',e=>{
+    e.preventDefault();
+    msgEl.className = "msg err";
+    msgEl.textContent = "不允许使用粘贴";
+});
+// 禁止拖拽填入
+inputEl.addEventListener('drop',e=>{
+    e.preventDefault();
+    msgEl.className = "msg err";
+    msgEl.textContent = "不允许拖拽填充";
+});
+
+inputEl.addEventListener('input', () => {
+    if(firstKeyTs === null){
+        firstKeyTs = performance.now();
+    }
+});
+
+document.getElementById('submitBtn').onclick = ()=>{
+    if(!realUserIp){
+        msgEl.className = "msg err";
+        msgEl.textContent = "IP信息加载未完成，请稍候";
+        return;
+    }
+    if(firstKeyTs === null){
+        msgEl.className = "msg err";
+        msgEl.textContent = "请填写IP";
+        return;
+    }
+    const endTs = performance.now();
+    const cost = endTs - firstKeyTs;
+    const val = inputEl.value.trim();
+
+    if(val !== realUserIp){
+        msgEl.className = "msg err";
+        msgEl.textContent = "验证失败";
+        return;
+    }
+    if(cost >= 0 && cost <= 30){
+        msgEl.className = "msg err";
+        msgEl.textContent = "验证失败";
+        return;
+    }
+    // 验证通过，写入缓存
+    saveCache(realUserIp);
+    msgEl.className = "msg ok";
+    msgEl.textContent = "验证通过";
+    setTimeout(()=>location.href=targetUrl,800);
+}
+
+document.getElementById('resetBtn').onclick = ()=>{
+    inputEl.value = "";
+    msgEl.textContent = "";
+    firstKeyTs = null;
+}
+
+// ========== 龙卷风粒子 ==========
+const canvas = document.getElementById('tornadoCanvas');
+const ctx = canvas.getContext('2d');
+let w, h;
+let particles = [];
+const particleCount = 600;
+function resize(){
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize',resize);
+class Particle{
+    constructor(){this.reset()}
+    reset(){
+        this.angle = Math.random() * Math.PI*2;
+        this.radius = Math.random() * 120 + 20;
+        this.y = h - Math.random()*120;
+        this.speedAngle = 0.02 + Math.random()*0.025;
+        this.speedUp = 0.8 + Math.random()*1.2;
+        this.alpha = 0;
+        this.maxAlpha = 0.25 + Math.random()*0.35;
+        this.size = Math.random()*2.2 + 0.4;
+    }
+    update(){
+        this.angle += this.speedAngle;
+        this.y -= this.speedUp;
+        let scaleY = 1 - (h - this.y)/h;
+        let r = this.radius * (1 - scaleY*0.75);
+        this.x = w/2 + Math.cos(this.angle)*r;
+        if(this.y < 80) this.alpha -= 0.015;
+        else this.alpha = Math.min(this.alpha+0.008, this.maxAlpha);
+        if(this.alpha <=0 || this.y < 20) this.reset();
+    }
+    draw(){
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size,0,Math.PI*2);
+        ctx.fillStyle = `rgba(170,200,255,${this.alpha})`;
+        ctx.fill();
+    }
+}
+for(let i=0;i<particleCount;i++) particles.push(new Particle());
+function loop(){
+    ctx.fillStyle = 'rgba(5,5,8,0.07)';
+    ctx.fillRect(0,0,w,h);
+    particles.forEach(p=>{p.update();p.draw()})
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
