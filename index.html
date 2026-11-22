@@ -80,80 +80,88 @@ button{
 </div>
 
 <script>
-const targetUrl = "https://www.pcplayergame.gn0.cc";
+// 目标地址base64编码：https://www.pcplayergame.gn0.cc
+const encodedUrl = "aHR0cHM6Ly93d3cucGNwbGF5ZXJnYW1lLmduMC5jYw==";
+const allowHost = "www.pcplayergame.gn0.cc";
 let realUserIp = "";
 let firstKeyTs = null;
 const ipEl = document.getElementById('realIp');
 const inputEl = document.getElementById('ipInput');
 const msgEl = document.getElementById('msg');
-const wrap = document.querySelector('.wrap');
 
-// 获取今天日期字符串 YYYY-MM-DD
+// 多IP接口备用，依次重试
+const ipApis = [
+    "https://jsonip.com",
+    "https://api.ipify.org?format=json",
+    "https://ipconfig.io/json"
+];
+let apiIndex = 0;
+
 function getTodayStr(){
     const d = new Date();
     return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
 }
-
-// 读取缓存
 function getCache(){
     const raw = localStorage.getItem('verifyCache');
     if(!raw) return null;
-    try{
-        return JSON.parse(raw);
-    }catch(e){
-        return null;
-    }
+    try{return JSON.parse(raw);}catch(e){return null;}
 }
-
-// 保存缓存
 function saveCache(ip){
-    localStorage.setItem('verifyCache', JSON.stringify({
-        ip: ip,
-        date: getTodayStr()
-    }));
+    localStorage.setItem('verifyCache', JSON.stringify({ip,date:getTodayStr()}));
 }
-
-// 检查是否今天已经验证过
 function checkSkip(ip){
-    const cache = getCache();
-    if(cache && cache.ip === ip && cache.date === getTodayStr()){
-        // 直接跳过验证
-        location.href = targetUrl;
+    const c = getCache();
+    if(c && c.ip === ip && c.date === getTodayStr()){
+        goJump();
         return true;
     }
     return false;
 }
+function goJump(){
+    const target = atob(encodedUrl);
+    const u = new URL(target);
+    if(u.host !== allowHost){
+        msgEl.className = "msg err";
+        msgEl.textContent = "跳转地址非法";
+        return;
+    }
+    location.href = target;
+}
 
-// 获取公网IP
-fetch("https://api.ipify.org?format=json")
-.then(r=>r.json())
-.then(d=>{
-    realUserIp = d.ip;
-    ipEl.textContent = realUserIp;
-    // 校验是否可以跳过
-    checkSkip(realUserIp);
-})
-.catch(()=>{
-    ipEl.textContent = "获取失败，请手动查看IP";
-});
+// 循环重试IP接口
+function fetchIp(){
+    if(apiIndex >= ipApis.length){
+        ipEl.textContent = "获取失败，请手动查看IP";
+        return;
+    }
+    fetch(ipApis[apiIndex])
+    .then(r=>r.json())
+    .then(d=>{
+        // jsonip返回ip，ipify返回ip
+        const ip = d.ip;
+        realUserIp = ip;
+        ipEl.textContent = realUserIp;
+        checkSkip(realUserIp);
+    })
+    .catch(()=>{
+        apiIndex++;
+        fetchIp();
+    })
+}
+fetchIp();
 
-// 禁止粘贴
 inputEl.addEventListener('paste',e=>{
     e.preventDefault();
     msgEl.className = "msg err";
     msgEl.textContent = "不允许使用粘贴";
 });
-// 禁止拖拽填入
 inputEl.addEventListener('drop',e=>{
     e.preventDefault();
     msgEl.className = "msg err";
     msgEl.textContent = "不允许拖拽填充";
 });
-
 inputEl.addEventListener('input', () => {
-    if(firstKeyTs === null){
-        firstKeyTs = performance.now();
-    }
+    if(firstKeyTs === null) firstKeyTs = performance.now();
 });
 
 document.getElementById('submitBtn').onclick = ()=>{
@@ -167,34 +175,25 @@ document.getElementById('submitBtn').onclick = ()=>{
         msgEl.textContent = "请填写IP";
         return;
     }
-    const endTs = performance.now();
-    const cost = endTs - firstKeyTs;
+    const cost = performance.now() - firstKeyTs;
     const val = inputEl.value.trim();
-
-    if(val !== realUserIp){
+    if(val !== realUserIp || (cost >= 0 && cost <= 30)){
         msgEl.className = "msg err";
         msgEl.textContent = "验证失败";
         return;
     }
-    if(cost >= 0 && cost <= 30){
-        msgEl.className = "msg err";
-        msgEl.textContent = "验证失败";
-        return;
-    }
-    // 验证通过，写入缓存
     saveCache(realUserIp);
     msgEl.className = "msg ok";
     msgEl.textContent = "验证通过";
-    setTimeout(()=>location.href=targetUrl,800);
+    setTimeout(goJump,800);
 }
-
 document.getElementById('resetBtn').onclick = ()=>{
     inputEl.value = "";
     msgEl.textContent = "";
     firstKeyTs = null;
 }
 
-// ========== 龙卷风粒子 ==========
+// 龙卷风粒子
 const canvas = document.getElementById('tornadoCanvas');
 const ctx = canvas.getContext('2d');
 let w, h;
@@ -221,12 +220,12 @@ class Particle{
     update(){
         this.angle += this.speedAngle;
         this.y -= this.speedUp;
-        let scaleY = 1 - (h - this.y)/h;
-        let r = this.radius * (1 - scaleY*0.75);
+        const scaleY = 1 - this.y/h;
+        const r = this.radius * (1 - scaleY);
         this.x = w/2 + Math.cos(this.angle)*r;
         if(this.y < 80) this.alpha -= 0.015;
         else this.alpha = Math.min(this.alpha+0.008, this.maxAlpha);
-        if(this.alpha <=0 || this.y < 20) this.reset();
+        if(this.alpha <= 0 || this.y < 0) this.reset();
     }
     draw(){
         ctx.beginPath();
